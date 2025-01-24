@@ -1,0 +1,7 @@
+[package]
+authors = ["Niklas Anderson <nkanders@gmail.com>"]
+name = "quick_aqi"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
