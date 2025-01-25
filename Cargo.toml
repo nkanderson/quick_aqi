@@ -5,3 +5,28 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+cortex-m = { version = "0.7.7", features = ["critical-section-single-core"] }
+cortex-m-rt = { version = "0.7.5", features = ["device"] }
+defmt-rtt = "0.4.1"
+embassy-executor = { version = "0.7.0", features = [
+  "arch-cortex-m",
+  "executor-thread",
+  "executor-interrupt",
+  "defmt",
+] }
+embassy-stm32 = { version = "0.2.0", features = [
+  "stm32f303vc",
+  "memory-x",
+  "time-driver-any",
+] }
+panic-probe = "0.3.2"
+stm32-metapac = { version = "16.0.0", features = ["stm32f303vc"] }
+
+[features]
+default = ["memory-x"]
+## Automatically generate `memory.x` file based on the memory map from [`stm32-metapac`](https://docs.rs/stm32-metapac/)
+memory-x = []
+
+## Tell the compiler which chip we're using
+# by setting this feature flag
+stm32f303vc = ["stm32-metapac/stm32f303vc"]
