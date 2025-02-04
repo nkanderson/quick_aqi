@@ -13,7 +13,7 @@ Add the Cortex-M4F hardware with floating point target:
 $ rustup target add thumbv7em-none-eabihf
 ```
 
-On MacOS, install GDB nad OpenOCD using the following:
+On MacOS, install GDB and OpenOCD using the following:
 ```sh
 $ brew install arm-none-eabi-gdb
 $ brew install openocd
