@@ -5,29 +5,18 @@ use cortex_m_rt::entry;
 use embassy_stm32::gpio::{Input, Level, Output, Pull, Speed};
 use {defmt_rtt as _, panic_probe as _};
 
+use cortex_m_semihosting::hprintln;
 use embassy_stm32::i2c::{Config, I2c};
-// use embassy_stm32::rcc::ClockConfig;
 use embassy_stm32::time::Hertz;
 use {defmt_rtt as _, panic_probe as _};
 
-use cortex_m_semihosting::hprintln;
-// use cortex_m_semihosting::{debug, hprintln};
-
 static SENSOR_I2C_ADDR: u8 = 0x12;
-
-// TODO? Bind I2C interrupt (not used in blocking mode but still required)
-// bind_interrupts!(struct Irqs { I2C2 => embassy_stm32::i2c::InterruptHandler<I2C2>; });
 
 #[entry]
 fn main() -> ! {
     let p = embassy_stm32::init(Default::default());
     let mut led = Output::new(p.PE9, Level::High, Speed::Low);
     let button = Input::new(p.PA0, Pull::Down);
-    // let mut timer = p.TIM2;
-
-    // Configure system clocks (HSE = 8MHz, running at 72MHz system clock)
-    // let config = ClockConfig::default();
-    // embassy_stm32::rcc::init(config);
 
     // Assign I2C pins
     let scl = p.PA9;
