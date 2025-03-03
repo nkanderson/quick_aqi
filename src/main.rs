@@ -14,8 +14,21 @@ const SENSOR_I2C_ADDR: u8 = 0x12;
 const EXPECTED_HEADER: [u8; 2] = [0x42, 0x4D];
 const TOTAL_REGISTERS: usize = 32;
 
-// TODO: Make a struct for the sensor data, maybe one for the
-// sensor as a whole
+#[derive(Debug)]
+pub struct Pmsa003iData {
+    pm1_0_standard: u16, // PM1.0 concentration unit μ g/m3（CF=1，standard particle）
+    pm2_5_standard: u16, // PM2.5 concentration unit μ g/m3（CF=1，standard particle）
+    pm10_standard: u16,  // PM10 concentration unit μ g/m3（CF=1，standard particle）
+    pm1_0_env: u16,      // PM1.0 concentration unit μ g/m3（under atmospheric environment）
+    pm2_5_env: u16,      // PM2.5 concentration unit μ g/m3（under atmospheric environment）
+    pm10_env: u16,       // PM10 concentration unit μ g/m3  (under atmospheric environment)
+    particles_0_3: u16,  // Number of particles with diameter beyond 0.3 um in 0.1L of air
+    particles_0_5: u16,  // Number of particles with diameter beyond 0.5 um in 0.1L of air
+    particles_1_0: u16,  // Number of particles with diameter beyond 1.0 um in 0.1L of air
+    particles_2_5: u16,  // Number of particles with diameter beyond 2.5 um in 0.1L of air
+    particles_5_0: u16,  // Number of particles with diameter beyond 5.0 um in 0.1L of air
+    particles_10: u16,   // Number of particles with diameter beyond 10 um in 0.1L of air
+}
 
 #[entry]
 fn main() -> ! {
@@ -63,7 +76,7 @@ fn main() -> ! {
                 for i in 0..30 {
                     calculated_sum = calculated_sum.wrapping_add(buffer[i] as u16);
                 }
-                let received_sum = ((buffer[30] as u16) << 8) | buffer[31] as u16;
+                let received_sum = u16::from_be_bytes([buffer[30], buffer[31]]);
 
                 hprintln!("Calculated checksum: {}", calculated_sum);
                 hprintln!("Received checksum: {}", received_sum);
@@ -74,8 +87,22 @@ fn main() -> ! {
                     hprintln!("Checksum validated successfully");
 
                     // 3. Parse big endian data
-                    // Extract PM2.5 concentration (example - adjust based on your sensor's data format)
-                    let pm25_concentration = ((buffer[6] as u16) << 8) | buffer[7] as u16;
+                    // Extract PM2.5 concentration
+                    let data = Pmsa003iData {
+                        pm1_0_standard: u16::from_be_bytes([buffer[4], buffer[5]]),
+                        pm2_5_standard: u16::from_be_bytes([buffer[6], buffer[7]]),
+                        pm10_standard: u16::from_be_bytes([buffer[8], buffer[9]]),
+                        pm1_0_env: u16::from_be_bytes([buffer[10], buffer[11]]),
+                        pm2_5_env: u16::from_be_bytes([buffer[12], buffer[13]]),
+                        pm10_env: u16::from_be_bytes([buffer[14], buffer[15]]),
+                        particles_0_3: u16::from_be_bytes([buffer[16], buffer[17]]),
+                        particles_0_5: u16::from_be_bytes([buffer[18], buffer[19]]),
+                        particles_1_0: u16::from_be_bytes([buffer[20], buffer[21]]),
+                        particles_2_5: u16::from_be_bytes([buffer[22], buffer[23]]),
+                        particles_5_0: u16::from_be_bytes([buffer[24], buffer[25]]),
+                        particles_10: u16::from_be_bytes([buffer[26], buffer[27]]),
+                    };
+                    let pm25_concentration = data.pm2_5_standard;
 
                     // Convert concentration to AQI
                     let aqi = calculate_aqi(pm25_concentration);
