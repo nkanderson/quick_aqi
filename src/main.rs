@@ -14,20 +14,26 @@ const SENSOR_I2C_ADDR: u8 = 0x12;
 const EXPECTED_HEADER: [u8; 2] = [0x42, 0x4D];
 const TOTAL_REGISTERS: usize = 32;
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Pmsa003iData {
-    pm1_0_standard: u16, // PM1.0 concentration unit μ g/m3（CF=1，standard particle）
-    pm2_5_standard: u16, // PM2.5 concentration unit μ g/m3（CF=1，standard particle）
-    pm10_standard: u16,  // PM10 concentration unit μ g/m3（CF=1，standard particle）
-    pm1_0_env: u16,      // PM1.0 concentration unit μ g/m3（under atmospheric environment）
-    pm2_5_env: u16,      // PM2.5 concentration unit μ g/m3（under atmospheric environment）
-    pm10_env: u16,       // PM10 concentration unit μ g/m3  (under atmospheric environment)
-    particles_0_3: u16,  // Number of particles with diameter beyond 0.3 um in 0.1L of air
-    particles_0_5: u16,  // Number of particles with diameter beyond 0.5 um in 0.1L of air
-    particles_1_0: u16,  // Number of particles with diameter beyond 1.0 um in 0.1L of air
-    particles_2_5: u16,  // Number of particles with diameter beyond 2.5 um in 0.1L of air
-    particles_5_0: u16,  // Number of particles with diameter beyond 5.0 um in 0.1L of air
-    particles_10: u16,   // Number of particles with diameter beyond 10 um in 0.1L of air
+    // CF is "Calibration Factory", and generally not useful for our needs.
+    _pm1_0_standard: u16, // PM1.0 concentration unit μ g/m3（CF=1，standard particle）
+    _pm2_5_standard: u16, // PM2.5 concentration unit μ g/m3（CF=1，standard particle）
+    _pm10_standard: u16,  // PM10 concentration unit μ g/m3（CF=1，standard particle）
+
+    // The environmental units take into account factors like ambient pressure.
+    // This is typically what is used in an AQI report or forecast.
+    pm1_0_env: u16, // PM1.0 concentration unit μ g/m3（environmental units）
+    pm2_5_env: u16, // PM2.5 concentration unit μ g/m3（environmental units）
+    pm10_env: u16,  // PM10 concentration unit μ g/m3  (environmental units)
+
+    // The particle count per volume of air is often used in a cleanroom context.
+    particles_0_3: u16, // Number of particles with diameter beyond 0.3 um in 0.1L of air
+    particles_0_5: u16, // Number of particles with diameter beyond 0.5 um in 0.1L of air
+    particles_1_0: u16, // Number of particles with diameter beyond 1.0 um in 0.1L of air
+    particles_2_5: u16, // Number of particles with diameter beyond 2.5 um in 0.1L of air
+    particles_5_0: u16, // Number of particles with diameter beyond 5.0 um in 0.1L of air
+    particles_10: u16,  // Number of particles with diameter beyond 10 um in 0.1L of air
 }
 
 #[entry]
@@ -87,22 +93,13 @@ fn main() -> ! {
                     hprintln!("Checksum validated successfully");
 
                     // 3. Parse big endian data
+                    let data = parse_data(&mut buffer).unwrap_or_else(|err| {
+                        hprintln!("Error parsing data: {}", err);
+                        Pmsa003iData::default()
+                    });
+
                     // Extract PM2.5 concentration
-                    let data = Pmsa003iData {
-                        pm1_0_standard: u16::from_be_bytes([buffer[4], buffer[5]]),
-                        pm2_5_standard: u16::from_be_bytes([buffer[6], buffer[7]]),
-                        pm10_standard: u16::from_be_bytes([buffer[8], buffer[9]]),
-                        pm1_0_env: u16::from_be_bytes([buffer[10], buffer[11]]),
-                        pm2_5_env: u16::from_be_bytes([buffer[12], buffer[13]]),
-                        pm10_env: u16::from_be_bytes([buffer[14], buffer[15]]),
-                        particles_0_3: u16::from_be_bytes([buffer[16], buffer[17]]),
-                        particles_0_5: u16::from_be_bytes([buffer[18], buffer[19]]),
-                        particles_1_0: u16::from_be_bytes([buffer[20], buffer[21]]),
-                        particles_2_5: u16::from_be_bytes([buffer[22], buffer[23]]),
-                        particles_5_0: u16::from_be_bytes([buffer[24], buffer[25]]),
-                        particles_10: u16::from_be_bytes([buffer[26], buffer[27]]),
-                    };
-                    let pm25_concentration = data.pm2_5_standard;
+                    let pm25_concentration = data.pm2_5_env;
 
                     // Convert concentration to AQI
                     let aqi = calculate_aqi(pm25_concentration);
@@ -158,4 +155,25 @@ fn calculate_aqi(pm25: u16) -> u16 {
 
     // If PM2.5 is above 500, return the maximum AQI value
     500
+}
+
+fn parse_data(buffer: &mut [u8]) -> Result<Pmsa003iData, &'static str> {
+    if buffer.len() < 32 {
+        return Err("Buffer too short, expected at least 32 bytes");
+    }
+
+    Ok(Pmsa003iData {
+        _pm1_0_standard: u16::from_be_bytes([buffer[4], buffer[5]]),
+        _pm2_5_standard: u16::from_be_bytes([buffer[6], buffer[7]]),
+        _pm10_standard: u16::from_be_bytes([buffer[8], buffer[9]]),
+        pm1_0_env: u16::from_be_bytes([buffer[10], buffer[11]]),
+        pm2_5_env: u16::from_be_bytes([buffer[12], buffer[13]]),
+        pm10_env: u16::from_be_bytes([buffer[14], buffer[15]]),
+        particles_0_3: u16::from_be_bytes([buffer[16], buffer[17]]),
+        particles_0_5: u16::from_be_bytes([buffer[18], buffer[19]]),
+        particles_1_0: u16::from_be_bytes([buffer[20], buffer[21]]),
+        particles_2_5: u16::from_be_bytes([buffer[22], buffer[23]]),
+        particles_5_0: u16::from_be_bytes([buffer[24], buffer[25]]),
+        particles_10: u16::from_be_bytes([buffer[26], buffer[27]]),
+    })
 }
