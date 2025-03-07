@@ -63,54 +63,56 @@ fn main() -> ! {
     // Get all data from sensor (addresses 0x00 through 0x1f, 32 total)
     let mut buffer = [0u8; TOTAL_REGISTERS];
     hprintln!("Reading all registers");
+    // TODO: These match arms are getting difficult to read, will need to refactor
     match i2c.blocking_write_read(SENSOR_I2C_ADDR, &[0x00], &mut buffer) {
         Ok(()) => {
             // 1. Validate data from addresses 0x0 and 0x1 match 0x42 and 0x4d, the hardcoded header
-            if buffer[0..2] != EXPECTED_HEADER {
-                hprintln!(
+            match validate_header(&buffer[0..2]) {
+                Ok(_) => {
+                    hprintln!("Header validated successfully");
+
+                    // 2. Calculate sum of first 30 bytes as checksum
+                    let mut calculated_sum: u16 = 0;
+                    for i in 0..30 {
+                        calculated_sum = calculated_sum.wrapping_add(buffer[i] as u16);
+                    }
+                    let received_sum = u16::from_be_bytes([buffer[30], buffer[31]]);
+
+                    hprintln!("Calculated checksum: {}", calculated_sum);
+                    hprintln!("Received checksum: {}", received_sum);
+
+                    if calculated_sum != received_sum {
+                        hprintln!("Warning: Checksum mismatch!");
+                    } else {
+                        hprintln!("Checksum validated successfully");
+
+                        // 3. Parse big endian data
+                        let data = parse_data(&mut buffer).unwrap_or_else(|err| {
+                            hprintln!("Error parsing data: {}", err);
+                            Pmsa003iData::default()
+                        });
+
+                        // Extract PM2.5 concentration
+                        let pm25_concentration = data.pm2_5_env;
+
+                        // Convert concentration to AQI
+                        let aqi = calculate_aqi(pm25_concentration);
+                        hprintln!("PM2.5 concentration: {} µg/m³", pm25_concentration);
+                        hprintln!("AQI: {}", aqi);
+
+                        // Print all register values for debugging
+                        for (i, &value) in buffer.iter().enumerate() {
+                            hprintln!("Register 0x{:02X}: 0x{:02X}", i, value);
+                        }
+                    }
+                }
+                Err(_err) => hprintln!(
                     "Warning: Invalid header! Got 0x{:02X}{:02X}, expected 0x{:02X}{:02X}",
                     buffer[0],
                     buffer[1],
                     EXPECTED_HEADER[0],
                     EXPECTED_HEADER[1]
-                );
-            } else {
-                hprintln!("Header validated successfully");
-
-                // 2. Calculate sum of first 30 bytes as checksum
-                let mut calculated_sum: u16 = 0;
-                for i in 0..30 {
-                    calculated_sum = calculated_sum.wrapping_add(buffer[i] as u16);
-                }
-                let received_sum = u16::from_be_bytes([buffer[30], buffer[31]]);
-
-                hprintln!("Calculated checksum: {}", calculated_sum);
-                hprintln!("Received checksum: {}", received_sum);
-
-                if calculated_sum != received_sum {
-                    hprintln!("Warning: Checksum mismatch!");
-                } else {
-                    hprintln!("Checksum validated successfully");
-
-                    // 3. Parse big endian data
-                    let data = parse_data(&mut buffer).unwrap_or_else(|err| {
-                        hprintln!("Error parsing data: {}", err);
-                        Pmsa003iData::default()
-                    });
-
-                    // Extract PM2.5 concentration
-                    let pm25_concentration = data.pm2_5_env;
-
-                    // Convert concentration to AQI
-                    let aqi = calculate_aqi(pm25_concentration);
-                    hprintln!("PM2.5 concentration: {} µg/m³", pm25_concentration);
-                    hprintln!("AQI: {}", aqi);
-
-                    // Print all register values for debugging
-                    for (i, &value) in buffer.iter().enumerate() {
-                        hprintln!("Register 0x{:02X}: 0x{:02X}", i, value);
-                    }
-                }
+                ),
             }
         }
         Err(e) => hprintln!("Error reading registers: {:?}", e),
@@ -132,6 +134,9 @@ fn main() -> ! {
 // in this file with `nostd` (or move this function to another file?)
 fn calculate_aqi(pm25: u16) -> u16 {
     // AQI breakpoints for PM2.5
+    // TODO: Update these to reflect changes made in 2024:
+    // https://www.epa.gov/system/files/documents/2024-02/pm-naaqs-air-quality-index-fact-sheet.pdf
+    // And update to floating point, since MCU has an FPU
     const BREAKPOINTS: [(u16, u16, u16, u16); 7] = [
         (0, 12, 0, 50),       // Good
         (13, 35, 51, 100),    // Moderate
@@ -148,7 +153,7 @@ fn calculate_aqi(pm25: u16) -> u16 {
             // Linear interpolation formula:
             // AQI = ((AQIhigh - AQIlow) / (Conchigh - Conclow)) * (Conc - Conclow) + AQIlow
             // Translated from https://github.com/adafruit/Adafruit_PM25AQI/blob/master/Adafruit_PM25AQI.cpp
-            // TODO: May want to find additional sources for this formula
+            // TODO: Cite the EPA doc now in the docs directory
             return ((aqi_high - aqi_low) * (pm25 - pm_low)) / (pm_high - pm_low) + aqi_low;
         }
     }
@@ -176,4 +181,23 @@ fn parse_data(buffer: &mut [u8]) -> Result<Pmsa003iData, &'static str> {
         particles_5_0: u16::from_be_bytes([buffer[24], buffer[25]]),
         particles_10: u16::from_be_bytes([buffer[26], buffer[27]]),
     })
+}
+
+fn validate_header(header_bytes: &[u8]) -> Result<(), &'static str> {
+    if header_bytes.is_empty() {
+        return Err("Buffer is empty");
+    }
+
+    if header_bytes == EXPECTED_HEADER {
+        Ok(())
+    } else {
+        hprintln!(
+            "Warning: Invalid header! Got 0x{:02X}{:02X}, expected 0x{:02X}{:02X}",
+            header_bytes[0],
+            header_bytes[1],
+            EXPECTED_HEADER[0],
+            EXPECTED_HEADER[1]
+        );
+        Err("Header validation failed")
+    }
 }
