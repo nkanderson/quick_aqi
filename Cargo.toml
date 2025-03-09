@@ -20,6 +20,7 @@ embassy-stm32 = { version = "0.2.0", features = [
   "memory-x",
   "time-driver-any",
 ] }
+libm = "0.2.11"
 panic-probe = "0.3.2"
 stm32-metapac = { version = "16.0.0", features = ["stm32f303vc"] }
 

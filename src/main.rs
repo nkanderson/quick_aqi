@@ -96,7 +96,7 @@ fn main() -> ! {
                         let pm25_concentration = data.pm2_5_env;
 
                         // Convert concentration to AQI
-                        let aqi = calculate_aqi(pm25_concentration);
+                        let aqi = calculate_aqi(pm25_concentration as f32);
                         hprintln!("PM2.5 concentration: {} µg/m³", pm25_concentration);
                         hprintln!("AQI: {}", aqi);
 
@@ -132,29 +132,41 @@ fn main() -> ! {
 
 // TODO: Add tests - need to determine how best to do that
 // in this file with `nostd` (or move this function to another file?)
-fn calculate_aqi(pm25: u16) -> u16 {
+fn calculate_aqi(pm25: f32) -> u16 {
     // AQI breakpoints for PM2.5
-    // TODO: Update these to reflect changes made in 2024:
+    // Updated in 2024, see the following from the EPA:
     // https://www.epa.gov/system/files/documents/2024-02/pm-naaqs-air-quality-index-fact-sheet.pdf
-    // And update to floating point, since MCU has an FPU
-    const BREAKPOINTS: [(u16, u16, u16, u16); 7] = [
-        (0, 12, 0, 50),       // Good
-        (13, 35, 51, 100),    // Moderate
-        (36, 55, 101, 150),   // Unhealthy for Sensitive Groups
-        (56, 150, 151, 200),  // Unhealthy
-        (151, 250, 201, 300), // Very Unhealthy
-        (251, 350, 301, 400), // Hazardous
-        (351, 500, 401, 500), // Very Hazardous
+    // https://document.airnow.gov/technical-assistance-document-for-the-reporting-of-daily-air-quailty.pdf
+    const PM25_BREAKPOINTS: [(f32, f32); 6] = [
+        (0.0, 9.0),     // Good
+        (9.1, 35.4),    // Moderate
+        (35.5, 55.4),   // Unhealthy for Sensitive Groups
+        (55.5, 125.4),  // Unhealthy
+        (125.5, 225.4), // Very Unhealthy
+        (225.5, 500.0), // Hazardous
+    ];
+
+    // AQI values corresponding to breakpoints
+    const AQI_BREAKPOINTS: [(u16, u16); 6] = [
+        (0, 50),    // Good
+        (51, 100),  // Moderate
+        (101, 150), // Unhealthy for Sensitive Groups
+        (151, 200), // Unhealthy
+        (201, 300), // Very Unhealthy
+        (301, 500), // Hazardous
     ];
 
     // Find the appropriate breakpoint range
-    for (pm_low, pm_high, aqi_low, aqi_high) in BREAKPOINTS {
+    for i in 0..PM25_BREAKPOINTS.len() {
+        let (pm_low, pm_high) = PM25_BREAKPOINTS[i];
         if pm25 >= pm_low && pm25 <= pm_high {
-            // Linear interpolation formula:
-            // AQI = ((AQIhigh - AQIlow) / (Conchigh - Conclow)) * (Conc - Conclow) + AQIlow
-            // Translated from https://github.com/adafruit/Adafruit_PM25AQI/blob/master/Adafruit_PM25AQI.cpp
-            // TODO: Cite the EPA doc now in the docs directory
-            return ((aqi_high - aqi_low) * (pm25 - pm_low)) / (pm_high - pm_low) + aqi_low;
+            let (aqi_low, aqi_high) = AQI_BREAKPOINTS[i];
+
+            // Linear interpolation formula transcribed from EPA documentation
+            // AQI = ((AQIhigh - AQIlow) / (PMhigh - PMlow)) * (PMactual - PMlow) + AQIlow
+            let aqi = ((aqi_high - aqi_low) as f32 / (pm_high - pm_low)) * (pm25 - pm_low)
+                + aqi_low as f32;
+            return libm::roundf(aqi) as u16;
         }
     }
 
