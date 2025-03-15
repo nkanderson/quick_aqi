@@ -3,6 +3,7 @@
 
 use cortex_m_rt::entry;
 use embassy_stm32::gpio::{Input, Level, Output, Pull, Speed};
+use embassy_stm32::peripherals::{PE10, PE11, PE12, PE13, PE14, PE15, PE8, PE9};
 use {defmt_rtt as _, panic_probe as _};
 
 use cortex_m_semihosting::hprintln;
@@ -36,10 +37,107 @@ pub struct Pmsa003iData {
     particles_10: u16,  // Number of particles with diameter beyond 10 um in 0.1L of air
 }
 
+// Color enum to map AQI value to LED color
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Color {
+    Green,
+    Yellow,
+    Orange,
+    Red,
+    Purple,
+    DarkPurple,
+}
+
+// LED struct used to map names to pins
+pub struct LedController {
+    // The STM32F303 Discovery has LEDs on these pins:
+    // PE8 (blue), PE9 (red), PE10 (orange), PE11 (green),
+    // PE12 (blue), PE13 (red), PE14 (orange), PE15 (green)
+    led_blue1: Output<'static>,
+    led_red1: Output<'static>,
+    led_orange1: Output<'static>,
+    led_green1: Output<'static>,
+    led_blue2: Output<'static>,
+    led_red2: Output<'static>,
+    led_orange2: Output<'static>,
+    led_green2: Output<'static>,
+}
+
+impl LedController {
+    pub fn new(
+        pe8: PE8,
+        pe9: PE9,
+        pe10: PE10,
+        pe11: PE11,
+        pe12: PE12,
+        pe13: PE13,
+        pe14: PE14,
+        pe15: PE15,
+    ) -> Self {
+        Self {
+            led_blue1: Output::new(pe8, Level::Low, Speed::Low),
+            led_red1: Output::new(pe9, Level::Low, Speed::Low),
+            led_orange1: Output::new(pe10, Level::Low, Speed::Low),
+            led_green1: Output::new(pe11, Level::Low, Speed::Low),
+            led_blue2: Output::new(pe12, Level::Low, Speed::Low),
+            led_red2: Output::new(pe13, Level::Low, Speed::Low),
+            led_orange2: Output::new(pe14, Level::Low, Speed::Low),
+            led_green2: Output::new(pe15, Level::Low, Speed::Low),
+        }
+    }
+
+    pub fn set_color(&mut self, color: Color) {
+        // Turn off all LEDs first
+        self.all_off();
+
+        // Set LEDs matching on color.
+        // This is an approximation, since the Discovery board
+        // doesn't not have individual LEDs with the exact colors
+        // needed.
+        match color {
+            Color::Green => {
+                self.led_green1.set_high();
+                self.led_green2.set_high();
+            }
+            Color::Yellow => {
+                self.led_green1.set_high();
+                self.led_orange1.set_high();
+            }
+            Color::Orange => {
+                self.led_orange1.set_high();
+                self.led_orange2.set_high();
+            }
+            Color::Red => {
+                self.led_red1.set_high();
+                self.led_red2.set_high();
+            }
+            Color::Purple => {
+                self.led_red1.set_high();
+                self.led_blue1.set_high();
+            }
+            Color::DarkPurple => {
+                self.led_red2.set_high();
+                self.led_blue1.set_high();
+                self.led_blue2.set_high();
+            }
+        }
+    }
+
+    fn all_off(&mut self) {
+        self.led_orange1.set_low();
+        self.led_green1.set_low();
+        self.led_red1.set_low();
+        self.led_blue1.set_low();
+        self.led_orange2.set_low();
+        self.led_green2.set_low();
+        self.led_red2.set_low();
+        self.led_blue2.set_low();
+    }
+}
+
 #[entry]
 fn main() -> ! {
     let p = embassy_stm32::init(Default::default());
-    let mut led = Output::new(p.PE9, Level::High, Speed::Low);
     let button = Input::new(p.PA0, Pull::Down);
 
     // Assign I2C pins
@@ -49,6 +147,10 @@ fn main() -> ! {
     // Initialize I2C2 with 100kHz speed
     // TODO? May want to use 400kHz
     let mut i2c = I2c::new_blocking(p.I2C2, scl, sda, Hertz(100_000), Config::default());
+
+    // Create our LED controller
+    let mut led_controller =
+        LedController::new(p.PE8, p.PE9, p.PE10, p.PE11, p.PE12, p.PE13, p.PE14, p.PE15);
 
     // Ping check the device
     hprintln!(
@@ -63,6 +165,7 @@ fn main() -> ! {
     // Get all data from sensor (addresses 0x00 through 0x1f, 32 total)
     let mut buffer = [0u8; TOTAL_REGISTERS];
     hprintln!("Reading all registers");
+    let mut aqi = 0;
     // TODO: These match arms are getting difficult to read, will need to refactor
     match i2c.blocking_write_read(SENSOR_I2C_ADDR, &[0x00], &mut buffer) {
         Ok(()) => {
@@ -96,7 +199,7 @@ fn main() -> ! {
                         let pm25_concentration = data.pm2_5_env;
 
                         // Convert concentration to AQI
-                        let aqi = calculate_aqi(pm25_concentration as f32);
+                        aqi = calculate_aqi(pm25_concentration as f32);
                         hprintln!("PM2.5 concentration: {} µg/m³", pm25_concentration);
                         hprintln!("AQI: {}", aqi);
 
@@ -123,9 +226,15 @@ fn main() -> ! {
 
     loop {
         if button.is_high() {
-            led.set_high();
+            // Get color name from AQI value
+            let color = get_aqi_color(aqi);
+
+            // Set the LED color
+            led_controller.set_color(color);
+
+            hprintln!("Calculated AQI: {}, Color: {:?}", aqi, color);
         } else {
-            led.set_low();
+            led_controller.all_off();
         }
     }
 }
@@ -211,5 +320,17 @@ fn validate_header(header_bytes: &[u8]) -> Result<(), &'static str> {
             EXPECTED_HEADER[1]
         );
         Err("Header validation failed")
+    }
+}
+
+// AQI mapping to LED color
+fn get_aqi_color(value: u16) -> Color {
+    match value {
+        0..=50 => Color::Green,
+        51..=100 => Color::Yellow,
+        101..=150 => Color::Orange,
+        151..=200 => Color::Red,
+        201..=300 => Color::Purple,
+        _ => Color::DarkPurple,
     }
 }
