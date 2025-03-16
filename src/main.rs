@@ -1,8 +1,9 @@
 #![no_std]
 #![no_main]
 
-use cortex_m_rt::entry;
-use embassy_stm32::gpio::{Input, Level, Output, Pull, Speed};
+use embassy_executor::Spawner;
+use embassy_stm32::exti::ExtiInput;
+use embassy_stm32::gpio::{Level, Output, Pull, Speed};
 use embassy_stm32::peripherals::{PE10, PE11, PE12, PE13, PE14, PE15, PE8, PE9};
 use {defmt_rtt as _, panic_probe as _};
 
@@ -135,10 +136,10 @@ impl LedController {
     }
 }
 
-#[entry]
-fn main() -> ! {
+#[embassy_executor::main]
+async fn main(_spawner: Spawner) {
     let p = embassy_stm32::init(Default::default());
-    let button = Input::new(p.PA0, Pull::Down);
+    let mut button = ExtiInput::new(p.PA0, p.EXTI0, Pull::Down);
 
     // Assign I2C pins
     let scl = p.PA9;
@@ -225,6 +226,7 @@ fn main() -> ! {
     // i2c.blocking_write(SENSOR_I2C_ADDR, &[]).ok();
 
     loop {
+        button.wait_for_any_edge().await;
         if button.is_high() {
             // Get color name from AQI value
             let color = get_aqi_color(aqi);
