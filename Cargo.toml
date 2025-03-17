@@ -19,6 +19,7 @@ embassy-stm32 = { version = "0.2.0", features = [
   "stm32f303vc",
   "memory-x",
   "time-driver-any",
+  "exti",
 ] }
 libm = "0.2.11"
 panic-probe = "0.3.2"
