@@ -67,6 +67,7 @@ pub struct LedController {
 }
 
 impl LedController {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         pe8: PE8,
         pe9: PE9,
