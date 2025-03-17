@@ -25,17 +25,17 @@ pub struct Pmsa003iData {
 
     // The environmental units take into account factors like ambient pressure.
     // This is typically what is used in an AQI report or forecast.
-    pm1_0_env: u16, // PM1.0 concentration unit μ g/m3（environmental units）
-    pm2_5_env: u16, // PM2.5 concentration unit μ g/m3（environmental units）
-    pm10_env: u16,  // PM10 concentration unit μ g/m3  (environmental units)
+    _pm1_0_env: u16, // PM1.0 concentration unit μ g/m3（environmental units）
+    pm2_5_env: u16,  // PM2.5 concentration unit μ g/m3（environmental units）
+    _pm10_env: u16,  // PM10 concentration unit μ g/m3  (environmental units)
 
     // The particle count per volume of air is often used in a cleanroom context.
-    particles_0_3: u16, // Number of particles with diameter beyond 0.3 um in 0.1L of air
-    particles_0_5: u16, // Number of particles with diameter beyond 0.5 um in 0.1L of air
-    particles_1_0: u16, // Number of particles with diameter beyond 1.0 um in 0.1L of air
-    particles_2_5: u16, // Number of particles with diameter beyond 2.5 um in 0.1L of air
-    particles_5_0: u16, // Number of particles with diameter beyond 5.0 um in 0.1L of air
-    particles_10: u16,  // Number of particles with diameter beyond 10 um in 0.1L of air
+    _particles_0_3: u16, // Number of particles with diameter beyond 0.3 um in 0.1L of air
+    _particles_0_5: u16, // Number of particles with diameter beyond 0.5 um in 0.1L of air
+    _particles_1_0: u16, // Number of particles with diameter beyond 1.0 um in 0.1L of air
+    _particles_2_5: u16, // Number of particles with diameter beyond 2.5 um in 0.1L of air
+    _particles_5_0: u16, // Number of particles with diameter beyond 5.0 um in 0.1L of air
+    _particles_10: u16,  // Number of particles with diameter beyond 10 um in 0.1L of air
 }
 
 // Color enum to map AQI value to LED color
@@ -333,15 +333,15 @@ fn parse_data(buffer: &mut [u8]) -> Result<Pmsa003iData, &'static str> {
         _pm1_0_standard: u16::from_be_bytes([buffer[4], buffer[5]]),
         _pm2_5_standard: u16::from_be_bytes([buffer[6], buffer[7]]),
         _pm10_standard: u16::from_be_bytes([buffer[8], buffer[9]]),
-        pm1_0_env: u16::from_be_bytes([buffer[10], buffer[11]]),
+        _pm1_0_env: u16::from_be_bytes([buffer[10], buffer[11]]),
         pm2_5_env: u16::from_be_bytes([buffer[12], buffer[13]]),
-        pm10_env: u16::from_be_bytes([buffer[14], buffer[15]]),
-        particles_0_3: u16::from_be_bytes([buffer[16], buffer[17]]),
-        particles_0_5: u16::from_be_bytes([buffer[18], buffer[19]]),
-        particles_1_0: u16::from_be_bytes([buffer[20], buffer[21]]),
-        particles_2_5: u16::from_be_bytes([buffer[22], buffer[23]]),
-        particles_5_0: u16::from_be_bytes([buffer[24], buffer[25]]),
-        particles_10: u16::from_be_bytes([buffer[26], buffer[27]]),
+        _pm10_env: u16::from_be_bytes([buffer[14], buffer[15]]),
+        _particles_0_3: u16::from_be_bytes([buffer[16], buffer[17]]),
+        _particles_0_5: u16::from_be_bytes([buffer[18], buffer[19]]),
+        _particles_1_0: u16::from_be_bytes([buffer[20], buffer[21]]),
+        _particles_2_5: u16::from_be_bytes([buffer[22], buffer[23]]),
+        _particles_5_0: u16::from_be_bytes([buffer[24], buffer[25]]),
+        _particles_10: u16::from_be_bytes([buffer[26], buffer[27]]),
     })
 }
 
