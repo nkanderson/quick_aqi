@@ -4,11 +4,13 @@
 use embassy_executor::Spawner;
 use embassy_stm32::exti::ExtiInput;
 use embassy_stm32::gpio::{Level, Output, Pull, Speed};
-use embassy_stm32::peripherals::{PE10, PE11, PE12, PE13, PE14, PE15, PE8, PE9};
+use embassy_stm32::peripherals::{I2C2, PE10, PE11, PE12, PE13, PE14, PE15, PE8, PE9};
 use {defmt_rtt as _, panic_probe as _};
 
 use cortex_m_semihosting::hprintln;
+use embassy_stm32::bind_interrupts;
 use embassy_stm32::i2c::{Config, I2c};
+use embassy_stm32::mode::Async;
 use embassy_stm32::time::Hertz;
 use {defmt_rtt as _, panic_probe as _};
 
@@ -93,7 +95,7 @@ impl LedController {
 
         // Set LEDs matching on color.
         // This is an approximation, since the Discovery board
-        // doesn't not have individual LEDs with the exact colors
+        // doesn't have individual LEDs with the exact colors
         // needed.
         match color {
             Color::Green => {
@@ -136,6 +138,11 @@ impl LedController {
     }
 }
 
+bind_interrupts!(struct Irqs {
+    I2C2_EV => embassy_stm32::i2c::EventInterruptHandler<I2C2>;
+    I2C2_ER => embassy_stm32::i2c::ErrorInterruptHandler<I2C2>;
+});
+
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) {
     let p = embassy_stm32::init(Default::default());
@@ -147,7 +154,16 @@ async fn main(_spawner: Spawner) {
 
     // Initialize I2C2 with 100kHz speed
     // TODO? May want to use 400kHz
-    let mut i2c = I2c::new_blocking(p.I2C2, scl, sda, Hertz(100_000), Config::default());
+    let mut i2c = I2c::new(
+        p.I2C2,
+        scl,
+        sda,
+        Irqs,
+        p.DMA1_CH4,
+        p.DMA1_CH5,
+        Hertz(100_000),
+        Config::default(),
+    );
 
     // Create our LED controller
     let mut led_controller =
@@ -225,35 +241,10 @@ async fn main(_spawner: Spawner) {
     loop {
         button.wait_for_any_edge().await;
         if button.is_high() {
-            match i2c.blocking_write_read(SENSOR_I2C_ADDR, &[0x00], &mut buffer) {
-                Ok(()) => {
-                    // Validate data from addresses 0x0 and 0x1 match 0x42 and 0x4d, the hardcoded header
+            match fetch_data(&mut i2c).await {
+                Ok(sensor_data) => {
                     match validate_header(&buffer[0..2]) {
-                        Ok(_) => {
-                            // Calculate sum of first 30 bytes as checksum
-                            let mut calculated_sum: u16 = 0;
-                            for i in 0..30 {
-                                calculated_sum = calculated_sum.wrapping_add(buffer[i] as u16);
-                            }
-                            let received_sum = u16::from_be_bytes([buffer[30], buffer[31]]);
-
-                            if calculated_sum != received_sum {
-                                hprintln!("Warning: Checksum mismatch!");
-                            } else {
-                                // Parse big endian data
-                                let data = parse_data(&mut buffer).unwrap_or_else(|err| {
-                                    hprintln!("Error parsing data: {}", err);
-                                    Pmsa003iData::default()
-                                });
-
-                                // Extract PM2.5 concentration
-                                let pm25_concentration = data.pm2_5_env;
-
-                                // Convert concentration to AQI
-                                aqi = calculate_aqi(pm25_concentration as f32);
-                                hprintln!("PM2.5 concentration: {} µg/m³", pm25_concentration);
-                            }
-                        }
+                        Ok(_) => {}
                         Err(_err) => hprintln!(
                             "Warning: Invalid header! Got 0x{:02X}{:02X}, expected 0x{:02X}{:02X}",
                             buffer[0],
@@ -261,6 +252,29 @@ async fn main(_spawner: Spawner) {
                             EXPECTED_HEADER[0],
                             EXPECTED_HEADER[1]
                         ),
+                    }
+                    // Calculate sum of first 30 bytes as checksum
+                    let mut calculated_sum: u16 = 0;
+                    for i in 0..30 {
+                        calculated_sum = calculated_sum.wrapping_add(sensor_data[i] as u16);
+                    }
+                    let received_sum = u16::from_be_bytes([sensor_data[30], sensor_data[31]]);
+
+                    if calculated_sum != received_sum {
+                        hprintln!("Warning: Checksum mismatch!");
+                    } else {
+                        // Parse big endian data
+                        let data = parse_data(&sensor_data).unwrap_or_else(|err| {
+                            hprintln!("Error parsing data: {}", err);
+                            Pmsa003iData::default()
+                        });
+
+                        // Extract PM2.5 concentration
+                        let pm25_concentration = data.pm2_5_env;
+
+                        // Convert concentration to AQI
+                        aqi = calculate_aqi(pm25_concentration as f32);
+                        hprintln!("PM2.5 concentration: {} µg/m³", pm25_concentration);
                     }
                 }
                 Err(e) => hprintln!("Error reading registers: {:?}", e),
@@ -324,7 +338,7 @@ fn calculate_aqi(pm25: f32) -> u16 {
     500
 }
 
-fn parse_data(buffer: &mut [u8]) -> Result<Pmsa003iData, &'static str> {
+fn parse_data(buffer: &[u8]) -> Result<Pmsa003iData, &'static str> {
     if buffer.len() < 32 {
         return Err("Buffer too short, expected at least 32 bytes");
     }
@@ -343,6 +357,15 @@ fn parse_data(buffer: &mut [u8]) -> Result<Pmsa003iData, &'static str> {
         _particles_5_0: u16::from_be_bytes([buffer[24], buffer[25]]),
         _particles_10: u16::from_be_bytes([buffer[26], buffer[27]]),
     })
+}
+
+async fn fetch_data<'a>(
+    i2c: &mut I2c<'a, Async>,
+) -> Result<[u8; TOTAL_REGISTERS], embassy_stm32::i2c::Error> {
+    let mut buffer = [0u8; TOTAL_REGISTERS];
+    i2c.write_read(SENSOR_I2C_ADDR, &[0x00], &mut buffer)
+        .await?;
+    Ok(buffer)
 }
 
 fn validate_header(header_bytes: &[u8]) -> Result<(), &'static str> {
