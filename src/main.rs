@@ -179,102 +179,34 @@ async fn main(_spawner: Spawner) {
         Err(e) => hprintln!("Device did not respond to ping: {:?}", e),
     }
 
-    // Get all data from sensor (addresses 0x00 through 0x1f, 32 total)
-    let mut buffer = [0u8; TOTAL_REGISTERS];
-    hprintln!("Reading all registers");
     let mut aqi = 0;
-    // TODO: These match arms are getting difficult to read, will need to refactor
-    match i2c.blocking_write_read(SENSOR_I2C_ADDR, &[0x00], &mut buffer) {
-        Ok(()) => {
-            // 1. Validate data from addresses 0x0 and 0x1 match 0x42 and 0x4d, the hardcoded header
-            match validate_header(&buffer[0..2]) {
-                Ok(_) => {
-                    hprintln!("Header validated successfully");
-
-                    // 2. Calculate sum of first 30 bytes as checksum
-                    let mut calculated_sum: u16 = 0;
-                    for i in 0..30 {
-                        calculated_sum = calculated_sum.wrapping_add(buffer[i] as u16);
-                    }
-                    let received_sum = u16::from_be_bytes([buffer[30], buffer[31]]);
-
-                    hprintln!("Calculated checksum: {}", calculated_sum);
-                    hprintln!("Received checksum: {}", received_sum);
-
-                    if calculated_sum != received_sum {
-                        hprintln!("Warning: Checksum mismatch!");
-                    } else {
-                        hprintln!("Checksum validated successfully");
-
-                        // 3. Parse big endian data
-                        let data = parse_data(&mut buffer).unwrap_or_else(|err| {
-                            hprintln!("Error parsing data: {}", err);
-                            Pmsa003iData::default()
-                        });
-
-                        // Extract PM2.5 concentration
-                        let pm25_concentration = data.pm2_5_env;
-
-                        // Convert concentration to AQI
-                        aqi = calculate_aqi(pm25_concentration as f32);
-                        hprintln!("PM2.5 concentration: {} µg/m³", pm25_concentration);
-                        hprintln!("AQI: {}", aqi);
-
-                        // Print all register values for debugging
-                        for (i, &value) in buffer.iter().enumerate() {
-                            hprintln!("Register 0x{:02X}: 0x{:02X}", i, value);
-                        }
-                    }
-                }
-                Err(_err) => hprintln!(
-                    "Warning: Invalid header! Got 0x{:02X}{:02X}, expected 0x{:02X}{:02X}",
-                    buffer[0],
-                    buffer[1],
-                    EXPECTED_HEADER[0],
-                    EXPECTED_HEADER[1]
-                ),
-            }
-        }
-        Err(e) => hprintln!("Error reading registers: {:?}", e),
-    }
 
     loop {
         button.wait_for_any_edge().await;
         if button.is_high() {
             match fetch_data(&mut i2c).await {
                 Ok(sensor_data) => {
-                    match validate_header(&buffer[0..2]) {
-                        Ok(_) => {}
-                        Err(_err) => hprintln!(
-                            "Warning: Invalid header! Got 0x{:02X}{:02X}, expected 0x{:02X}{:02X}",
-                            buffer[0],
-                            buffer[1],
-                            EXPECTED_HEADER[0],
-                            EXPECTED_HEADER[1]
-                        ),
-                    }
-                    // Calculate sum of first 30 bytes as checksum
-                    let mut calculated_sum: u16 = 0;
-                    for i in 0..30 {
-                        calculated_sum = calculated_sum.wrapping_add(sensor_data[i] as u16);
-                    }
-                    let received_sum = u16::from_be_bytes([sensor_data[30], sensor_data[31]]);
+                    match validate_header(&sensor_data[0..2]) {
+                        Ok(_) => {
+                            match validate_checksum(&sensor_data[0..=31]) {
+                                Ok(_) => {
+                                    // Parse data
+                                    let data = parse_data(&sensor_data).unwrap_or_else(|err| {
+                                        hprintln!("Error parsing data: {}", err);
+                                        Pmsa003iData::default()
+                                    });
 
-                    if calculated_sum != received_sum {
-                        hprintln!("Warning: Checksum mismatch!");
-                    } else {
-                        // Parse big endian data
-                        let data = parse_data(&sensor_data).unwrap_or_else(|err| {
-                            hprintln!("Error parsing data: {}", err);
-                            Pmsa003iData::default()
-                        });
+                                    // Get PM2.5 concentration
+                                    let pm25_concentration = data.pm2_5_env;
 
-                        // Extract PM2.5 concentration
-                        let pm25_concentration = data.pm2_5_env;
-
-                        // Convert concentration to AQI
-                        aqi = calculate_aqi(pm25_concentration as f32);
-                        hprintln!("PM2.5 concentration: {} µg/m³", pm25_concentration);
+                                    // Convert concentration to AQI
+                                    aqi = calculate_aqi(pm25_concentration as f32);
+                                    hprintln!("PM2.5 concentration: {} µg/m³", pm25_concentration);
+                                }
+                                Err(e) => hprintln!("Error validating checksum: {}", e),
+                            }
+                        }
+                        Err(e) => hprintln!("Error validating header: {}", e),
                     }
                 }
                 Err(e) => hprintln!("Error reading registers: {:?}", e),
@@ -387,6 +319,26 @@ fn validate_header(header_bytes: &[u8]) -> Result<(), &'static str> {
     }
 }
 
+fn validate_checksum(checksum_bytes: &[u8]) -> Result<(), &'static str> {
+    if checksum_bytes.len() < 32 {
+        return Err("Could not validate checksum, incorrect number of bytes received");
+    }
+
+    // Calculate sum of first 30 bytes as checksum
+    let mut calculated_sum: u16 = 0;
+    for &byte in checksum_bytes.iter().take(30) {
+        calculated_sum = calculated_sum.wrapping_add(byte as u16);
+    }
+    let received_sum = u16::from_be_bytes([checksum_bytes[30], checksum_bytes[31]]);
+
+    if calculated_sum == received_sum {
+        Ok(())
+    } else {
+        // hprintln!("Warning: Checksum mismatch!");
+        Err("Checksum validation failed")
+    }
+}
+
 // AQI mapping to LED color
 fn get_aqi_color(value: u16) -> Color {
     match value {
@@ -396,5 +348,11 @@ fn get_aqi_color(value: u16) -> Color {
         151..=200 => Color::Red,
         201..=300 => Color::Purple,
         _ => Color::DarkPurple,
+    }
+}
+
+fn _print_all_regs(buffer: &[u8]) {
+    for (i, &value) in buffer.iter().enumerate() {
+        hprintln!("Register 0x{:02X}: 0x{:02X}", i, value);
     }
 }
