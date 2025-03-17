@@ -222,12 +222,49 @@ async fn main(_spawner: Spawner) {
         Err(e) => hprintln!("Error reading registers: {:?}", e),
     }
 
-    // Reset I2C bus with a stop condition
-    // i2c.blocking_write(SENSOR_I2C_ADDR, &[]).ok();
-
     loop {
         button.wait_for_any_edge().await;
         if button.is_high() {
+            match i2c.blocking_write_read(SENSOR_I2C_ADDR, &[0x00], &mut buffer) {
+                Ok(()) => {
+                    // Validate data from addresses 0x0 and 0x1 match 0x42 and 0x4d, the hardcoded header
+                    match validate_header(&buffer[0..2]) {
+                        Ok(_) => {
+                            // Calculate sum of first 30 bytes as checksum
+                            let mut calculated_sum: u16 = 0;
+                            for i in 0..30 {
+                                calculated_sum = calculated_sum.wrapping_add(buffer[i] as u16);
+                            }
+                            let received_sum = u16::from_be_bytes([buffer[30], buffer[31]]);
+
+                            if calculated_sum != received_sum {
+                                hprintln!("Warning: Checksum mismatch!");
+                            } else {
+                                // Parse big endian data
+                                let data = parse_data(&mut buffer).unwrap_or_else(|err| {
+                                    hprintln!("Error parsing data: {}", err);
+                                    Pmsa003iData::default()
+                                });
+
+                                // Extract PM2.5 concentration
+                                let pm25_concentration = data.pm2_5_env;
+
+                                // Convert concentration to AQI
+                                aqi = calculate_aqi(pm25_concentration as f32);
+                                hprintln!("PM2.5 concentration: {} µg/m³", pm25_concentration);
+                            }
+                        }
+                        Err(_err) => hprintln!(
+                            "Warning: Invalid header! Got 0x{:02X}{:02X}, expected 0x{:02X}{:02X}",
+                            buffer[0],
+                            buffer[1],
+                            EXPECTED_HEADER[0],
+                            EXPECTED_HEADER[1]
+                        ),
+                    }
+                }
+                Err(e) => hprintln!("Error reading registers: {:?}", e),
+            }
             // Get color name from AQI value
             let color = get_aqi_color(aqi);
 
@@ -235,6 +272,8 @@ async fn main(_spawner: Spawner) {
             led_controller.set_color(color);
 
             hprintln!("Calculated AQI: {}, Color: {:?}", aqi, color);
+            // Newline to separate output between readings
+            hprintln!("");
         } else {
             led_controller.all_off();
         }
