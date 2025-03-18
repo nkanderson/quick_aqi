@@ -187,11 +187,14 @@ async fn main(_spawner: Spawner) {
         if button.is_high() {
             match fetch_data(&mut i2c).await {
                 Ok(sensor_data) => {
+                    // If validations fail, skip data parsing and try again on the next iteration
                     if let Err(e) = validate_header(&sensor_data[0..2]) {
                         hprintln!("Error validating header: {}", e);
+                        continue;
                     }
                     if let Err(e) = validate_checksum(&sensor_data[0..=31]) {
                         hprintln!("Error validating checksum: {}", e);
+                        continue;
                     }
 
                     // Parse data
