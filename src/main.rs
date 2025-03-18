@@ -187,28 +187,25 @@ async fn main(_spawner: Spawner) {
         if button.is_high() {
             match fetch_data(&mut i2c).await {
                 Ok(sensor_data) => {
-                    match validate_header(&sensor_data[0..2]) {
-                        Ok(_) => {
-                            match validate_checksum(&sensor_data[0..=31]) {
-                                Ok(_) => {
-                                    // Parse data
-                                    let data = parse_data(&sensor_data).unwrap_or_else(|err| {
-                                        hprintln!("Error parsing data: {}", err);
-                                        Pmsa003iData::default()
-                                    });
-
-                                    // Get PM2.5 concentration
-                                    let pm25_concentration = data.pm2_5_env;
-
-                                    // Convert concentration to AQI
-                                    aqi = calculate_aqi(pm25_concentration as f32);
-                                    hprintln!("PM2.5 concentration: {} µg/m³", pm25_concentration);
-                                }
-                                Err(e) => hprintln!("Error validating checksum: {}", e),
-                            }
-                        }
-                        Err(e) => hprintln!("Error validating header: {}", e),
+                    if let Err(e) = validate_header(&sensor_data[0..2]) {
+                        hprintln!("Error validating header: {}", e);
                     }
+                    if let Err(e) = validate_checksum(&sensor_data[0..=31]) {
+                        hprintln!("Error validating checksum: {}", e);
+                    }
+
+                    // Parse data
+                    let data = parse_data(&sensor_data).unwrap_or_else(|err| {
+                        hprintln!("Error parsing data: {}", err);
+                        Pmsa003iData::default()
+                    });
+
+                    // Get PM2.5 concentration
+                    let pm25_concentration = data.pm2_5_env;
+
+                    // Convert concentration to AQI
+                    aqi = calculate_aqi(pm25_concentration as f32);
+                    hprintln!("PM2.5 concentration: {} µg/m³", pm25_concentration);
                 }
                 Err(e) => hprintln!("Error reading registers: {:?}", e),
             }
