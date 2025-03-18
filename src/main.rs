@@ -175,7 +175,8 @@ async fn main(_spawner: Spawner) {
         "Attempting to ping device at address 0x{:02X}",
         SENSOR_I2C_ADDR
     );
-    match i2c.blocking_write(SENSOR_I2C_ADDR, &[0x00]) {
+
+    match i2c.write(SENSOR_I2C_ADDR, &[0x00]).await {
         Ok(()) => hprintln!("Device responded to ping"),
         Err(e) => hprintln!("Device did not respond to ping: {:?}", e),
     }
