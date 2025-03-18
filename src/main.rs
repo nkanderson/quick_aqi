@@ -32,16 +32,14 @@
 #![no_std]
 #![no_main]
 
+use cortex_m_semihosting::hprintln;
 use embassy_executor::Spawner;
+use embassy_stm32::bind_interrupts;
 use embassy_stm32::exti::ExtiInput;
 use embassy_stm32::gpio::{Level, Output, Pull, Speed};
-use embassy_stm32::peripherals::{I2C2, PE10, PE11, PE12, PE13, PE14, PE15, PE8, PE9};
-use {defmt_rtt as _, panic_probe as _};
-
-use cortex_m_semihosting::hprintln;
-use embassy_stm32::bind_interrupts;
 use embassy_stm32::i2c::{Config, I2c};
 use embassy_stm32::mode::Async;
+use embassy_stm32::peripherals::{I2C2, PE10, PE11, PE12, PE13, PE14, PE15, PE8, PE9};
 use embassy_stm32::time::Hertz;
 use {defmt_rtt as _, panic_probe as _};
 
