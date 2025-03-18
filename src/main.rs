@@ -1,3 +1,34 @@
+//! Quick AQI
+//!
+//! Application to perform a quick measurement of local air quality.
+//! This implementation has been tested on a STM32F303VCT6 MCU
+//! (on the STM32F3DISCOVERY board) with a PMSA003I sensor.
+//!
+//! The application provides an Air Quality Index (AQI) calculation based
+//! on particulate matter of size 2.5 microns diameter or smaller, referred
+//! to as PM2.5.
+//!
+//! It is intended to allow for basic data gathering on local AQI conditions,
+//! which may or may not be well reported in a given area. It provides user
+//! feedback in the form of LED output indicating the AQI range of the current
+//! measurement, as defined by the EPA, in addition to an exact AQI calculation
+//! printed to a serial debug output. Individual AQI measurements may be
+//! triggered by pressing the onboard user button on the Discovery board.
+//!
+//!
+//! # Examples
+//!
+//! ```sh
+//! $ cargo build && cargo run
+//! Attempting to ping device at address 0x12
+//! Device responded to ping
+//! PM2.5 concentration: 41 µg/m³
+//! Calculated AQI: 115, Color: Orange
+//!
+//! PM2.5 concentration: 33 µg/m³
+//! Calculated AQI: 96, Color: Yellow
+//! ```
+
 #![no_std]
 #![no_main]
 
@@ -18,6 +49,9 @@ const SENSOR_I2C_ADDR: u8 = 0x12;
 const EXPECTED_HEADER: [u8; 2] = [0x42, 0x4D];
 const TOTAL_REGISTERS: usize = 32;
 
+/// The Pmsa003iData struct holds all air quality measurements
+/// performed by the PMSA003I sensor. Most values are not relevant
+/// for the current application.
 #[derive(Debug, Default)]
 pub struct Pmsa003iData {
     // CF is "Calibration Factory", and generally not useful for our needs.
@@ -40,7 +74,7 @@ pub struct Pmsa003iData {
     _particles_10: u16,  // Number of particles with diameter beyond 10 um in 0.1L of air
 }
 
-// Color enum to map AQI value to LED color
+/// Color enum provides colors corresponding to EPA AQI levels
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Color {
     Green,
@@ -51,9 +85,11 @@ pub enum Color {
     DarkPurple,
 }
 
-// LED struct used to map names to pins
+/// The LedController struct maps human-readable LED
+/// names to their corresponding pin name for the
+/// STM32F303 Discovery board.
 pub struct LedController {
-    // The STM32F303 Discovery has LEDs on these pins:
+    // STM32F303 Discovery LED pins and their colors:
     // PE8 (blue), PE9 (red), PE10 (orange), PE11 (green),
     // PE12 (blue), PE13 (red), PE14 (orange), PE15 (green)
     led_blue1: Output<'static>,
@@ -67,6 +103,14 @@ pub struct LedController {
 }
 
 impl LedController {
+    /// Initialize the target board LEDs as GPIO output.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let mut led_controller = LedController::new(p.PE8, p.PE9, p.PE10, p.PE11, p.PE12, p.PE13, p.PE14, p.PE15);
+    /// led_controller.set_color(color);
+    /// ```
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         pe8: PE8,
@@ -90,14 +134,24 @@ impl LedController {
         }
     }
 
+    /// Turn on desired LEDs based on the specified Color value.
+    ///
+    /// The Discovery board does not have LEDs with colors directly
+    /// matching the EPA AQI ranges, so some approximations are made.
+    /// For example, the represent a dark purple color, both blue LEDS
+    /// along with a red LED are set high.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let mut led_controller = LedController::new(p.PE8, p.PE9, p.PE10, p.PE11, p.PE12, p.PE13, p.PE14, p.PE15);
+    /// led_controller.set_color(Color::Orange);
+    /// ```
     pub fn set_color(&mut self, color: Color) {
         // Turn off all LEDs first
         self.all_off();
 
-        // Set LEDs matching on color.
-        // This is an approximation, since the Discovery board
-        // doesn't have individual LEDs with the exact colors
-        // needed.
+        // Set LEDs matching on color
         match color {
             Color::Green => {
                 self.led_green1.set_high();
@@ -127,6 +181,15 @@ impl LedController {
         }
     }
 
+    /// Turn off all LEDs. This is used as a reset prior
+    /// to setting desired LEDs high in set_color above.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let mut led_controller = LedController::new(p.PE8, p.PE9, p.PE10, p.PE11, p.PE12, p.PE13, p.PE14, p.PE15);
+    /// led_controller.all_off();
+    /// ```
     fn all_off(&mut self) {
         self.led_orange1.set_low();
         self.led_green1.set_low();
@@ -139,6 +202,8 @@ impl LedController {
     }
 }
 
+// Embassy macro to bind interrupts to handlers.
+// In this case, we're binding both event and error interrupts.
 bind_interrupts!(struct Irqs {
     I2C2_EV => embassy_stm32::i2c::EventInterruptHandler<I2C2>;
     I2C2_ER => embassy_stm32::i2c::ErrorInterruptHandler<I2C2>;
@@ -227,8 +292,29 @@ async fn main(_spawner: Spawner) {
     }
 }
 
-// TODO: Add tests - need to determine how best to do that
-// in this file with `nostd` (or move this function to another file?)
+/// Calulate the AQI for the provided PM2.5 value.
+///
+/// # Arguments
+///
+/// * `pm25` - The PM 2.5 value from the sensor
+///
+/// # Returns
+///
+/// The calculated AQI value using breakpoints and a formula
+/// provided by the EPA. These values may be confirmed using
+/// the calculator at https://www.airnow.gov/aqi/aqi-calculator-concentration/
+///
+/// # Examples
+///
+/// ```
+/// let pm25_concentration = 41;
+/// let aqi = calculate_aqi(pm25_concentration as f32);
+/// assert_eq!(115, aqi);
+///
+/// let pm25_concentration = 7;
+/// let aqi = calculate_aqi(pm25_concentration as f32);
+/// assert_eq!(39, aqi);
+/// ```
 fn calculate_aqi(pm25: f32) -> u16 {
     // AQI breakpoints for PM2.5
     // Updated in 2024, see the following from the EPA:
@@ -271,6 +357,27 @@ fn calculate_aqi(pm25: f32) -> u16 {
     500
 }
 
+/// Parses raw buffer data from the PMSA003I sensor
+/// into a struct with named values.
+///
+/// # Arguments
+///
+/// * `buffer` - 32 bytes of data from the sensor
+///
+/// # Returns
+///
+/// A Pmsa003iData struct or an error.
+///
+/// # Examples
+///
+/// ```
+/// let data = parse_data(&sensor_data).unwrap_or_else(|err| {
+///     hprintln!("Error parsing data: {}", err);
+///     Pmsa003iData::default()
+/// });
+///
+/// let pm25_concentration = data.pm2_5_env;
+/// ```
 fn parse_data(buffer: &[u8]) -> Result<Pmsa003iData, &'static str> {
     if buffer.len() < 32 {
         return Err("Buffer too short, expected at least 32 bytes");
@@ -292,6 +399,40 @@ fn parse_data(buffer: &[u8]) -> Result<Pmsa003iData, &'static str> {
     })
 }
 
+/// Fetches data in an async manner using a non-blocking I2C instance.
+///
+/// # Arguments
+///
+/// * `i2c` - An Embassy Async I2C instance
+///
+/// # Returns
+///
+/// A Result containing all retrieved data or an i2c Error.
+///
+/// # Examples
+///
+/// ```
+/// let mut i2c = I2c::new(
+///     p.I2C2,
+///     scl,
+///     sda,
+///     Irqs,
+///     p.DMA1_CH4,
+///     p.DMA1_CH5,
+///     Hertz(100_000),
+///     Config::default(),
+/// );
+///
+/// match fetch_data(&mut i2c).await {
+///     Ok(sensor_data) => {
+///         if let Err(e) = validate_header(&sensor_data[0..2]) {
+///             hprintln!("Error validating header: {}", e);
+///             continue;
+///         }
+///     }
+///     Err(e) => hprintln!("Error reading registers: {:?}", e),
+/// }
+/// ```
 async fn fetch_data<'a>(
     i2c: &mut I2c<'a, Async>,
 ) -> Result<[u8; TOTAL_REGISTERS], embassy_stm32::i2c::Error> {
@@ -301,6 +442,43 @@ async fn fetch_data<'a>(
     Ok(buffer)
 }
 
+/// Validates the header data retrieved from the PMSA003I sensor.
+/// The sensor has hardcoded values of 0x42 and 0x4D in the first
+/// two register. This function ensures the retrieved data includes
+/// those values.
+///
+/// # Arguments
+///
+/// * `header_bytes` - Two bytes of u8 data from the sensor
+///
+/// # Returns
+///
+/// Result of Ok(_) or an Err with message.
+///
+/// # Examples
+///
+/// ```
+/// let mut i2c = I2c::new(
+///     p.I2C2,
+///     scl,
+///     sda,
+///     Irqs,
+///     p.DMA1_CH4,
+///     p.DMA1_CH5,
+///     Hertz(100_000),
+///     Config::default(),
+/// );
+///
+/// match fetch_data(&mut i2c).await {
+///     Ok(sensor_data) => {
+///         if let Err(e) = validate_header(&sensor_data[0..2]) {
+///             hprintln!("Error validating header: {}", e);
+///             continue;
+///         }
+///     }
+///     Err(e) => hprintln!("Error reading registers: {:?}", e),
+/// }
+/// ```
 fn validate_header(header_bytes: &[u8]) -> Result<(), &'static str> {
     if header_bytes.is_empty() {
         return Err("Buffer is empty");
@@ -320,6 +498,43 @@ fn validate_header(header_bytes: &[u8]) -> Result<(), &'static str> {
     }
 }
 
+/// Validates the data and checksum retrieved from the PMSA003I sensor.
+/// The sensor provides checksum values against which the payload may be validated.
+/// The checksum values are contained in the last 2 bytes returned from the
+/// sensor, and are compared against the sum of the first 30 bytes of data.
+///
+/// # Arguments
+///
+/// * `checksum_bytes` - Entire array of u8 data from the sensor
+///
+/// # Returns
+///
+/// Result of Ok(_) or an Err with message.
+///
+/// # Examples
+///
+/// ```
+/// let mut i2c = I2c::new(
+///     p.I2C2,
+///     scl,
+///     sda,
+///     Irqs,
+///     p.DMA1_CH4,
+///     p.DMA1_CH5,
+///     Hertz(100_000),
+///     Config::default(),
+/// );
+///
+/// match fetch_data(&mut i2c).await {
+///     Ok(sensor_data) => {
+///         if let Err(e) = validate_checksum(&sensor_data[0..=31]) {
+///             hprintln!("Error validating checksum: {}", e);
+///             continue;
+///         }
+///     }
+///     Err(e) => hprintln!("Error reading registers: {:?}", e),
+/// }
+/// ```
 fn validate_checksum(checksum_bytes: &[u8]) -> Result<(), &'static str> {
     if checksum_bytes.len() < 32 {
         return Err("Could not validate checksum, incorrect number of bytes received");
@@ -339,9 +554,32 @@ fn validate_checksum(checksum_bytes: &[u8]) -> Result<(), &'static str> {
     }
 }
 
-// AQI mapping to LED color
-fn get_aqi_color(value: u16) -> Color {
-    match value {
+/// Provides a Color enum variant value based on the
+/// specified AQI value. Uses the ranges provided by the
+/// EPA for mapping AQI to color.
+///
+/// # Arguments
+///
+/// * `aqi` - The calculated AQI
+///
+/// # Returns
+///
+/// A Color enum variant.
+///
+/// # Examples
+///
+/// ```
+/// let data = parse_data(&sensor_data).unwrap_or_else(|err| {
+///     hprintln!("Error parsing data: {}", err);
+///     Pmsa003iData::default()
+/// });
+///
+/// let pm25_concentration = data.pm2_5_env;
+/// let aqi = calculate_aqi(pm25_concentration as f32);
+/// let color = get_aqi_color(aqi);
+/// ```
+fn get_aqi_color(aqi: u16) -> Color {
+    match aqi {
         0..=50 => Color::Green,
         51..=100 => Color::Yellow,
         101..=150 => Color::Orange,
@@ -351,6 +589,24 @@ fn get_aqi_color(value: u16) -> Color {
     }
 }
 
+/// Debugging helper function to print all data from
+/// the PMSA003I sensor. Simply iterates over all data
+/// and prints the register address and corresponding data.
+///
+/// # Arguments
+///
+/// * `buffer` - Entire array of u8 data from the sensor
+///
+/// # Examples
+///
+/// ```
+/// match fetch_data(&mut i2c).await {
+///     Ok(sensor_data) => {
+///         _print_all_regs(&sensor_data);
+///     }
+///     Err(e) => hprintln!("Error reading registers: {:?}", e),
+/// }
+/// ```
 fn _print_all_regs(buffer: &[u8]) {
     for (i, &value) in buffer.iter().enumerate() {
         hprintln!("Register 0x{:02X}: 0x{:02X}", i, value);
