@@ -34,7 +34,12 @@ $ brew install openocd
 
 ### Build and Execute Program
 
-With the board connected over USB and the sensor connected to the appropriate pins on the board, probably the simplest way to test the program is by using `probe-rs`.
+With the board connected over USB and the sensor connected to the appropriate pins on the board, the provided configuration in `.cargo/config.toml` should allow for simply running `cargo build` and `cargo run` (if running a debug build is acceptable):
+```sh
+$ cargo build && cargo run
+```
+
+The required commands may instead be run with the target specified for the build, and the executable run using `probe-rs`:
 
 Build the executable with the desired target:
 ```sh
@@ -67,6 +72,8 @@ $ arm-none-eabi-gdb target/thumbv7em-none-eabihf/debug/quick_aqi
 
 #### GDB commands
 
+Some helpful GDB commands are shown below.
+
 ```gdb
 # Connect to process on port 3333
 (gdb) target extended-remote :3333
@@ -91,7 +98,43 @@ $ arm-none-eabi-gdb target/thumbv7em-none-eabihf/debug/quick_aqi
 
 ## Example Output
 
-The following shows program execution with additional debugging output, including printout of the contents of each register. The calculated AQI and LED color are output while the user hardware button is pressed.
+The sections below contain output from end-user testing of the application functionality. In these cases, the baseline measurements were taken from a workstation in a home office. The elevated AQI readings were triggered using a blown-out candle, which emitted smoke that was captured by the sensor.
+
+### Standard Output
+
+The following shows program execution with the current standard output. It includes an initial ping check to ensure the device is connected. The output following shows individual AQI results using on-demand data collection using the Discovery board's user hardware button. In addition, the on-board LEDs are lit to reflect the current AQI range.
+
+```sh
+➜  quick_aqi git:(main) ✗ cargo build && cargo run
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.16s
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.08s
+     Running `probe-rs run --chip STM32F303VCTx target/thumbv7em-none-eabihf/debug/quick_aqi`
+      Erasing ✔ 100% [####################] 116.00 KiB @  46.17 KiB/s (took 3s)
+  Programming ✔ 100% [####################] 116.00 KiB @  19.12 KiB/s (took 6s)                                                                                          Finished in 8.58s
+Attempting to ping device at address 0x12
+Device responded to ping
+PM2.5 concentration: 41 µg/m³
+Calculated AQI: 115, Color: Orange
+
+PM2.5 concentration: 33 µg/m³
+Calculated AQI: 96, Color: Yellow
+
+PM2.5 concentration: 18 µg/m³
+Calculated AQI: 68, Color: Yellow
+
+PM2.5 concentration: 12 µg/m³
+Calculated AQI: 56, Color: Yellow
+
+PM2.5 concentration: 7 µg/m³
+Calculated AQI: 39, Color: Green
+
+PM2.5 concentration: 5 µg/m³
+Calculated AQI: 28, Color: Green
+```
+
+### Full Debug Output
+
+The following shows program execution with additional debugging output using the `pmsa003i::_print_all_regs` function, which includes a printout of the contents of each register. The calculated AQI and LED color are output while the user hardware button is pressed.
 
 ```sh
 ➜  quick_aqi git:(main) ✗ probe-rs run --chip STM32F303VC target/thumbv7em-none-eabihf/debug/quick_aqi
@@ -138,10 +181,6 @@ Register 0x1C: 0x97
 Register 0x1D: 0x00
 Register 0x1E: 0x02
 Register 0x1F: 0x28
-Calculated AQI: 17, Color: Green
-Calculated AQI: 17, Color: Green
-Calculated AQI: 17, Color: Green
-Calculated AQI: 17, Color: Green
 Calculated AQI: 17, Color: Green
 ```
 
@@ -193,9 +232,35 @@ Register 0x1D: 0x00
 Register 0x1E: 0x07
 Register 0x1F: 0x86
 Calculated AQI: 183, Color: Red
-Calculated AQI: 183, Color: Red
-Calculated AQI: 183, Color: Red
 ```
+
+## Challenges and Successes
+
+As with many embedded projects, the biggest challenges were at the beginning, in basic project setup and initial I2C communication with the sensor. I attempted to start by using blocking functions in order to keep the code within my current understanding of Rust. It's clear that Embassy is built for use with `async..await` though, so the initial project setup was maybe more difficult than when using non-blocking functions, but probably more understandable.
+
+The sensor datasheet is somewhat sparse on details, so it took a few attempts to get I2C communication configured correctly using Embassy's blocking I2C functions. Once I determined it was preferable to read all registers at once, it became straightforward.
+
+Related to the above, I did attempt a blocking version of the button-triggered data collection, but abandoned it as it was overly complex and not fully functional. Additionally, it was more difficult than expected to create a proper function signature for a data-fetching function that accepted an I2C instance. I wasn't able to come up with a working function using a blocking I2C instance, but was successful using a non-blocking instance.
+
+On the plus side, the changes necessary to move from blocking to non-blocking were much simpler than expected. Changes were fairly minimal, and are seen in [PR #8](https://github.com/nkanderson/quick_aqi/pull/8). The provided Embassy documentation and examples were essential in understanding how to make these small changes.
+
+## Limitations and Future Improvements
+
+### LED Output
+
+The current application uses on-board LEDs from the Discovery board to indicate AQI range. These LEDs have limited output, and there is not a one-to-one mapping between the colors available and the EPA-specified AQI range colors.
+
+Instead of using the on-board LEDs, it would be preferable to use a single RGB LED and drive it with the necessary combination of RGB values required to produce a specific color.
+
+### Text Output
+
+The application output the capture PM2.5 value from the sensor along with the calculated AQI to serial output on the host machine. It would be preferable for the application to output this data to an OLED screen connected over I2C.
+
+It seems likely that connecting the OLED along with the sensor over I2C would make it necessary to use synchronization patterns from Embassy. Specifically, the Embassy book contains a section on ["sharing peripherals between tasks"](https://embassy.dev/book/#_sharing_peripherals_between_tasks) which would likely be helpful.
+
+### Hardware Button
+
+If the eventual goal is to move away from using a prototyping board like the Discovery, it will be necessary to use a separate hardware button as well. This change would probably be done within a larger set of changes moving away from using the board. In switching from using the Discovery board to a more custom board with the same (or similar) MCU, it will also become necessary to re-map the pins for the I2C configuration (assuming the pin re-mapping for LEDs has taken place with the above switch to a single RGB LED).
 
 ## Resources and References
 
