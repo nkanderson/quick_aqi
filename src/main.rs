@@ -154,7 +154,6 @@ async fn main(_spawner: Spawner) {
     let sda = p.PA10;
 
     // Initialize I2C2 with 100kHz speed
-    // TODO? May want to use 400kHz
     let mut i2c = I2c::new(
         p.I2C2,
         scl,
@@ -336,7 +335,6 @@ fn validate_checksum(checksum_bytes: &[u8]) -> Result<(), &'static str> {
     if calculated_sum == received_sum {
         Ok(())
     } else {
-        // hprintln!("Warning: Checksum mismatch!");
         Err("Checksum validation failed")
     }
 }
