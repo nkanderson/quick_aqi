@@ -19,9 +19,13 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
+          targets: thumbv7em-none-eabihf
+
+      - name: Install Cargo Dependencies
+        run: rustup target add thumbv7em-none-eabihf
 
       - name: Run cargo fmt
         run: cargo fmt --check
 
       - name: Run cargo clippy
-        run: cargo clippy -- -D warnings
+        run: cargo clippy --target thumbv7em-none-eabihf -- -D warnings
