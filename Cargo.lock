@@ -12,6 +12,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "aqi"
+version = "0.1.0"
+dependencies = [
+ "aqi",
+ "libm",
+]
+
+[[package]]
 name = "as-slice"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -619,6 +627,7 @@ dependencies = [
 name = "quick_aqi"
 version = "0.1.0"
 dependencies = [
+ "aqi",
  "cortex-m",
  "cortex-m-rt",
  "cortex-m-semihosting",

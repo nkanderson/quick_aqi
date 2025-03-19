@@ -234,6 +234,17 @@ Register 0x1F: 0x86
 Calculated AQI: 183, Color: Red
 ```
 
+## Tests
+
+A number of testing challenges arose, which are covered in more detail below. It is possible to run some basic tests for the AQI library using the following command (replace the target triple with the current host machine):
+
+```sh
+cargo test -p aqi --target aarch64-apple-darwin --lib
+```
+
+This runs the tests for only the `aqi` package, and only runs the library tests, which excludes Rustdoc examples. The target triple above works on an Apple silicon device. An alternative value for a 64-bit Linux machine would be `x86_64-unknown-linux-gnu`.
+
+
 ## Challenges and Successes
 
 As with many embedded projects, the biggest challenges were at the beginning, in basic project setup and initial I2C communication with the sensor. I attempted to start by using blocking functions in order to keep the code within my current understanding of Rust. It's clear that Embassy is built for use with `async..await` though, so the initial project setup was maybe more difficult than when using non-blocking functions, but probably more understandable.

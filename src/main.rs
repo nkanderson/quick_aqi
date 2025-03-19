@@ -32,11 +32,10 @@
 #![no_std]
 #![no_main]
 
-mod aqi;
 mod pmsa003i;
 
-use crate::aqi::Color;
 use crate::pmsa003i::Pmsa003iData;
+use aqi::*;
 use cortex_m_semihosting::hprintln;
 use embassy_executor::Spawner;
 use embassy_stm32::bind_interrupts;
