@@ -3,6 +3,11 @@
 //! This module provides supporting functionality for AQI calculations and
 //! translations to EPA specified AQI color ranges.
 
+#![no_std]
+
+#[cfg(feature = "std")]
+extern crate std;
+
 /// Color enum provides colors corresponding to EPA AQI levels
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Color {
@@ -111,5 +116,26 @@ pub fn get_aqi_color(aqi: u16) -> Color {
         151..=200 => Color::Red,
         201..=300 => Color::Purple,
         _ => Color::DarkPurple,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_calculate_aqi() {
+        //
+        // Test validation success
+        //
+        let mut data = [0u8; 32];
+        // Fill first 30 bytes with 1s
+        data[..30].copy_from_slice(&[1; 30]);
+        // Calculate correct checksum
+        let checksum: u16 = data[..30].iter().map(|&b| b as u16).sum();
+        // Store it in big-endian format
+        data[30..32].copy_from_slice(&checksum.to_be_bytes());
+
+        assert_eq!(validate_checksum(&data), Ok(()));
     }
 }

@@ -1,0 +1,15 @@
+[package]
+name = "aqi"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = [] # no_std by default
+std = []     # Feature flag for std support
+
+[dependencies]
+libm = "0.2.11"
+
+[dev-dependencies]
+# Enable the std feature during tests
+aqi = { path = ".", features = ["std"] }
