@@ -37,3 +37,13 @@ stm32f303vc = ["stm32-metapac/stm32f303vc"]
 [dev-dependencies]
 defmt-test = "0.3.3"
 defmt = "0.3.10"
+
+
+# Disable tests for src/main.rs
+[[bin]]
+name = "quick_aqi"
+test = false
+
+[[test]]
+name = "unit"
+harness = false

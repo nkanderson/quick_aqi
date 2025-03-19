@@ -177,47 +177,6 @@ pub fn validate_header(header_bytes: &[u8]) -> Result<(), &'static str> {
     }
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use super::validate_checksum;
-//     use defmt::assert_eq;
-
-//     #[test]
-//     fn test_validate_checksum() {
-//         //
-//         // Test validation success
-//         //
-//         let mut data = [0u8; 32];
-//         // Fill first 30 bytes with 1s
-//         data[..30].copy_from_slice(&[1; 30]);
-//         // Calculate correct checksum
-//         let checksum: u16 = data[..30].iter().map(|&b| b as u16).sum();
-//         // Store it in big-endian format
-//         data[30..32].copy_from_slice(&checksum.to_be_bytes());
-
-//         assert_eq!(validate_checksum(&data), Ok(()));
-
-//         //
-//         // Test validation failure
-//         //
-//         // Incorrect checksum
-//         data[30..32].copy_from_slice(&[0x00, 0x00]);
-
-//         assert_eq!(validate_checksum(&data), Err("Checksum validation failed"));
-
-//         //
-//         // Incorrect number of bytes
-//         //
-//         // Less than 32 bytes
-//         let data = [0u8; 31];
-
-//         assert_eq!(
-//             validate_checksum(&data),
-//             Err("Could not validate checksum, incorrect number of bytes received")
-//         );
-//     }
-// }
-
 /// Validates the data and checksum retrieved from the PMSA003I sensor.
 /// The sensor provides checksum values against which the payload may be validated.
 /// The checksum values are contained in the last 2 bytes returned from the
