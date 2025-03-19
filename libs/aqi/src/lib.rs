@@ -125,17 +125,44 @@ mod tests {
 
     #[test]
     fn test_calculate_aqi() {
-        //
-        // Test validation success
-        //
-        let mut data = [0u8; 32];
-        // Fill first 30 bytes with 1s
-        data[..30].copy_from_slice(&[1; 30]);
-        // Calculate correct checksum
-        let checksum: u16 = data[..30].iter().map(|&b| b as u16).sum();
-        // Store it in big-endian format
-        data[30..32].copy_from_slice(&checksum.to_be_bytes());
+        // These expected values were confirmed using
+        // https://www.airnow.gov/aqi/aqi-calculator-concentration/
+        assert_eq!(calculate_aqi(0.0), 0);
+        assert_eq!(calculate_aqi(4.5), 25);
+        assert_eq!(calculate_aqi(9.0), 50);
+        assert_eq!(calculate_aqi(35.5), 101);
+        assert_eq!(calculate_aqi(45.0), 124);
+        assert_eq!(calculate_aqi(55.4), 150);
+        assert_eq!(calculate_aqi(55.5), 151);
+        assert_eq!(calculate_aqi(90.0), 175);
+        assert_eq!(calculate_aqi(125.4), 200);
+        assert_eq!(calculate_aqi(125.5), 201);
+        assert_eq!(calculate_aqi(175.0), 250);
+        assert_eq!(calculate_aqi(225.4), 300);
+        assert_eq!(calculate_aqi(225.5), 301);
+        assert_eq!(calculate_aqi(500.0), 500);
+    }
 
-        assert_eq!(validate_checksum(&data), Ok(()));
+    #[test]
+    fn test_get_aqi_color() {
+        assert_eq!(get_aqi_color(0), Color::Green);
+        assert_eq!(get_aqi_color(25), Color::Green);
+        assert_eq!(get_aqi_color(50), Color::Green);
+        assert_eq!(get_aqi_color(51), Color::Yellow);
+        assert_eq!(get_aqi_color(75), Color::Yellow);
+        assert_eq!(get_aqi_color(100), Color::Yellow);
+        assert_eq!(get_aqi_color(101), Color::Orange);
+        assert_eq!(get_aqi_color(125), Color::Orange);
+        assert_eq!(get_aqi_color(150), Color::Orange);
+        assert_eq!(get_aqi_color(151), Color::Red);
+        assert_eq!(get_aqi_color(175), Color::Red);
+        assert_eq!(get_aqi_color(200), Color::Red);
+        assert_eq!(get_aqi_color(201), Color::Purple);
+        assert_eq!(get_aqi_color(250), Color::Purple);
+        assert_eq!(get_aqi_color(300), Color::Purple);
+        assert_eq!(get_aqi_color(301), Color::DarkPurple);
+        assert_eq!(get_aqi_color(400), Color::DarkPurple);
+        assert_eq!(get_aqi_color(500), Color::DarkPurple);
+        assert_eq!(get_aqi_color(999), Color::DarkPurple);
     }
 }
