@@ -244,6 +244,8 @@ Related to the above, I did attempt a blocking version of the button-triggered d
 
 On the plus side, the changes necessary to move from blocking to non-blocking were much simpler than expected. Changes were fairly minimal, and are seen in [PR #8](https://github.com/nkanderson/quick_aqi/pull/8). The provided Embassy documentation and examples were essential in understanding how to make these small changes.
 
+The last challenge worth mentioning is the embedded testing environment. Since this is a `no_std` context, it's not possible to use the simple `#[test]` macro for unit tests. I've tried to get something set up using `defmt-test`, but have not yet had success. Ongoing work is present in the `add_testing` branch.
+
 ## Limitations and Future Improvements
 
 ### LED Output
@@ -261,6 +263,10 @@ It seems likely that connecting the OLED along with the sensor over I2C would ma
 ### Hardware Button
 
 If the eventual goal is to move away from using a prototyping board like the Discovery, it will be necessary to use a separate hardware button as well. This change would probably be done within a larger set of changes moving away from using the board. In switching from using the Discovery board to a more custom board with the same (or similar) MCU, it will also become necessary to re-map the pins for the I2C configuration (assuming the pin re-mapping for LEDs has taken place with the above switch to a single RGB LED).
+
+### Test Environment
+
+As noted above, creating a testing environment in the `no_std` context is non-trivial. A future improvement would be to have a fully functional environment for running basic unit tests.
 
 ## Resources and References
 
