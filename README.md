@@ -4,7 +4,7 @@ Application to perform a quick measurement of local air quality. This implementa
 
 The application provides an Air Quality Index (AQI) calculation based on particulate matter of size 2.5 microns diameter or smaller, referred to as PM2.5. It is intended to allow for basic data gathering on local AQI conditions, which may or may not be well reported in a given area. It provides user feedback in the form of LED output indicating the AQI range of the current measurement, as defined by the EPA, in addition to an exact AQI calculation printed to a serial debug output.
 
-Future iterations will include on-demand calculations using the user button control, as well as output of the exact AQI value to an OLED display. This may allow further extensions, including a display of particle count, which may be useful in a cleanroom context.
+Future iterations will include output of the exact PM2.5 and AQI values to an OLED display. This may allow further extensions, including a display of particle count, which may be useful in a cleanroom context.
 
 **Author**: Niklas Anderson
 
@@ -267,7 +267,7 @@ Instead of using the on-board LEDs, it would be preferable to use a single RGB L
 
 ### Text Output
 
-The application output the capture PM2.5 value from the sensor along with the calculated AQI to serial output on the host machine. It would be preferable for the application to output this data to an OLED screen connected over I2C.
+The application outputs the captured PM2.5 value from the sensor along with the calculated AQI to serial output on the host machine. It would be preferable for the application to output this data to an OLED screen connected over I2C.
 
 It seems likely that connecting the OLED along with the sensor over I2C would make it necessary to use synchronization patterns from Embassy. Specifically, the Embassy book contains a section on ["sharing peripherals between tasks"](https://embassy.dev/book/#_sharing_peripherals_between_tasks) which would likely be helpful.
 
