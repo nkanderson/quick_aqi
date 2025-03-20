@@ -1,7 +1,9 @@
-//! AQI module
+//! AQI library
 //!
-//! This module provides supporting functionality for AQI calculations and
-//! translations to EPA specified AQI color ranges.
+//! This library provides supporting functionality for AQI calculations and
+//! translations to EPA specified AQI color ranges. It supports both std and
+//! no_std environments, but is best used on systems with hardware floating
+//! point support.
 
 #![no_std]
 
